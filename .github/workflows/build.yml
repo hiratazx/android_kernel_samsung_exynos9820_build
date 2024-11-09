@@ -14,6 +14,11 @@ on:
         options:
           - gcc
           - clang
+      llvm_option:
+        description: 'Build with LLVM option?'
+        required: false
+        default: 'true'
+        type: boolean
 
 jobs:
   build:
@@ -37,16 +42,23 @@ jobs:
           git clone --depth=1 https://github.com/mvaisakh/gcc-arm64 toolchain
         fi
 
-    - name: Android kernel build for multiple devices
+    - name: Android kernel build
       run: |
         export PATH="$(pwd)/toolchain/bin:${PATH}"
         cd exynos9820
         devices=("beyond0lte" "beyond1lte" "beyond2lte" "beyondx")
+
+        # Check if llvm_option is true and set LLVM variable accordingly
+        llvm_flag=""
+        if [ "${{ github.event.inputs.llvm_option }}" = "true" ]; then
+          llvm_flag="llvm"
+        fi
+
         for device in "${devices[@]}"; do
           # Build for each device
           echo "Building kernel for ${device}..."
-          bash build.sh none "$device"
-          
+          bash build.sh none "$device" "${llvm_flag}"
+
           # Generate timestamp and rename the output zip
           TIMESTAMP=$(date +"%d%m%y-%H%M")
           ZIP_NAME="exynos9820-${device}-${TIMESTAMP}.zip"
