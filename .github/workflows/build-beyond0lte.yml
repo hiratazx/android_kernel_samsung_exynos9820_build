@@ -2,6 +2,11 @@ name: beyond0lte
 
 on:
   workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Specify the branch to use'
+        required: true
+        default: 'fourteen'
 
 jobs:
   build:
@@ -10,8 +15,8 @@ jobs:
     - name: Checkout kernel source
       uses: actions/checkout@v3
       with:
-        repository: awakened1712/android_kernel_samsung_exynos9820
-        ref: lineage-20
+        repository: hiratazx/android_kernel_samsung_exynos9820
+        ref: ${{ github.event.inputs.branch }}
         path: exynos9820
         fetch-depth: 100
 
@@ -27,29 +32,41 @@ jobs:
         cd exynos9820
         git submodule update --init --recursive
 
-    - name: Checkout patches
-      uses: actions/checkout@v3
-      with:
-        ref: build
-        path: patches
-
-    - name: Apply patches
+    - name: Android kernel build for multiple devices
       run: |
-        cd exynos9820
-        git apply ../patches/0051-ksu_support_umount_for_4.4.patch
-
-    - name: Android kernel build
-      run: |
-        sudo apt install libdebuginfod-dev
         export PATH="$(pwd)/toolchain/bin:${PATH}"
         cd exynos9820
-        bash build.sh none beyond0lte
-        git log --no-decorate --oneline -n 100 > out/ak3/ChangeLog.txt
+        devices=("beyond0lte" "beyond1lte" "beyond2lte" "beyondx")
+        for device in "${devices[@]}"; do
+          # Build for each device
+          echo "Building kernel for ${device}..."
+          bash build.sh none "$device"
+          
+          # Generate timestamp and rename the output zip
+          TIMESTAMP=$(date +"%d%m%y-%H%M")
+          ZIP_NAME="exynos9820-${device}-${TIMESTAMP}.zip"
+          mv out/ak3/*.zip "out/ak3/${ZIP_NAME}"
+          
+          # Log the changelog specific to this build
+          git log --no-decorate --oneline -n 100 > "out/ak3/ChangeLog-${device}.txt"
+        done
 
-    - name: Upload final output
-      uses: actions/upload-artifact@v3
+    - name: Create GitHub Release
+      id: create_release
+      uses: actions/create-release@v1
       with:
-        name: release-ksu
-        path: |
-          exynos9820/out/ak3/ChangeLog.txt
-          exynos9820/out/ak3/*.zip
+        tag_name: "release-${{ github.event.inputs.branch }}-${{ steps.rename.outputs.TIMESTAMP }}"
+        release_name: "TheRemainingMemory Kernel Release - ${{ github.event.inputs.branch }}"
+        body: "Automated release for exynos9820 kernel built from branch ${{ github.event.inputs.branch }}."
+        draft: false
+        prerelease: false
+
+    - name: Upload Release Assets
+      uses: actions/upload-release-asset@v1
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: |
+          exynos9820/out/ak3/exynos9820-*.zip
+          exynos9820/out/ak3/ChangeLog-*.txt
+        asset_name: "Exynos9820_Kernel_Builds_${{ github.event.inputs.branch }}.zip"
+        asset_content_type: application/zip
